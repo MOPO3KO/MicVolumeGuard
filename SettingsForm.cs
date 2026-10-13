@@ -6,7 +6,10 @@ using System.Windows.Forms;
 
 namespace MicVolumeGuard;
 
-/// <summary>Окно настроек: выбор микрофона, уровень громкости, блокировка, автозапуск.</summary>
+/// <summary>
+/// Окно настроек: выбор микрофона, уровень громкости, блокировка, автозапуск.
+/// Вёрстка на TableLayoutPanel — контролы не перекрываются ни при каком DPI/шрифте.
+/// </summary>
 internal sealed class SettingsForm : Form
 {
     private readonly AppSettings _settings;
@@ -21,6 +24,7 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _chkAutostart = new();
     private readonly Label _lblCurrent = new();
     private readonly Label _lblDevice = new();
+    private bool _loadingDevices;
 
     public SettingsForm(AppSettings settings, VolumeGuardEngine engine)
     {
@@ -34,113 +38,125 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5f);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(460, 320);
+        ClientSize = new Size(520, 330);
 
-        int y = 15;
-        Controls.Add(new Label
+        // --- таблица: 3 колонки (метка | контрол | хвост), строки по содержимому ---
+        var table = new TableLayoutPanel
         {
-            Text = "Микрофон:",
-            Location = new Point(15, y + 3),
-            AutoSize = true
-        });
-        _cmbDevice.DropDownStyle = ComboBoxStyle.DropDownList;
-        _cmbDevice.Location = new Point(120, y);
-        _cmbDevice.Width = 320;
-        _cmbDevice.SelectedIndexChanged += (s, e) =>
-        {
-            if (_cmbDevice.SelectedItem is DeviceItem di && di.Id != _settings.DeviceId)
-            {
-                _settings.DeviceId = di.Id;
-                _settings.DeviceName = di.Name;
-                _engine.AttachDevice();
-                SaveAndApply();
-            }
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 7,
+            Padding = new Padding(12),
+            AutoSize = true,
         };
-        Controls.Add(_cmbDevice);
-        y += 38;
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
 
-        _lblDevice.Text = "Текущее устройство: " + (_engine.CurrentDeviceName is { Length: > 0 } n ? n : "—");
-        _lblDevice.Location = new Point(15, y);
+        // Строка 1: микрофон
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        table.Controls.Add(new Label { Text = "Микрофон:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 6, 0) }, 0, 0);
+        _cmbDevice.DropDownStyle = ComboBoxStyle.DropDownList;
+        _cmbDevice.Dock = DockStyle.Fill;
+        _cmbDevice.SelectedIndexChanged += CmbDevice_SelectedIndexChanged;
+        table.Controls.Add(_cmbDevice, 1, 0);
+        table.SetColumnSpan(_cmbDevice, 2);
+
+        // Строка 2: текущее устройство
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        _lblDevice.Text = "Текущее устройство: —";
         _lblDevice.AutoSize = true;
         _lblDevice.ForeColor = Color.DimGray;
-        Controls.Add(_lblDevice);
-        y += 30;
+        _lblDevice.Margin = new Padding(0, 6, 0, 0);
+        table.Controls.Add(_lblDevice, 0, 1);
+        table.SetColumnSpan(_lblDevice, 3);
 
-        Controls.Add(new Label { Text = "Громкость:", Location = new Point(15, y + 3), AutoSize = true });
-        _slider.Minimum = 0; _slider.Maximum = 100;
-        _slider.Location = new Point(120, y);
-        _slider.Width = 240;
-        _slider.Value = _settings.VolumePercent;
-        _slider.Scroll += (s, e) => { _num.Value = _slider.Value; };
-        _slider.ValueChanged += (s, e) => { if (_num.Value != _slider.Value) _num.Value = _slider.Value; };
-        Controls.Add(_slider);
+        // Строка 3: громкость (слайдер + число)
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        table.Controls.Add(new Label { Text = "Громкость:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 12, 6, 0) }, 0, 2);
+        var volumePanel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        volumePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        volumePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 75));
+        _slider.Minimum = 0;
+        _slider.Maximum = 100;
+        _slider.Dock = DockStyle.Fill;
+        _slider.Value = Math.Clamp(_settings.VolumePercent, 0, 100);
+        volumePanel.Controls.Add(_slider, 0, 0);
+        _num.Minimum = 0;
+        _num.Maximum = 100;
+        _num.Dock = DockStyle.Fill;
+        _num.Value = Math.Clamp(_settings.VolumePercent, 0, 100);
+        volumePanel.Controls.Add(_num, 1, 0);
+        table.Controls.Add(volumePanel, 1, 2);
+        table.SetColumnSpan(volumePanel, 2);
 
-        _num.Minimum = 0; _num.Maximum = 100;
-        _num.Location = new Point(370, y - 2);
-        _num.Width = 70;
-        _num.Value = _settings.VolumePercent;
-        _num.ValueChanged += (s, e) => { if (_slider.Value != (int)_num.Value) _slider.Value = (int)_num.Value; };
-        Controls.Add(_num);
-        y += 40;
-
+        // Строка 4: блокировка
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         _chkLock.Text = "🔒 Блокировать уровень (откатывать изменения от других программ)";
         _chkLock.AutoSize = true;
-        _chkLock.Location = new Point(15, y);
         _chkLock.Checked = _settings.LockEnabled;
-        Controls.Add(_chkLock);
-        y += 30;
+        _chkLock.Margin = new Padding(0, 6, 0, 0);
+        table.Controls.Add(_chkLock, 0, 3);
+        table.SetColumnSpan(_chkLock, 3);
 
+        // Строка 5: mute
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        var mutePanel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Margin = new Padding(16, 0, 0, 0), AutoSize = true };
+        mutePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        mutePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _chkLockMute.Text = "Удерживать состояние mute:";
         _chkLockMute.AutoSize = true;
-        _chkLockMute.Location = new Point(35, y);
         _chkLockMute.Checked = _settings.LockMute;
-        _chkLockMute.CheckedChanged += (s, e) => { _chkMuteValue.Enabled = _chkLockMute.Checked; };
-        Controls.Add(_chkLockMute);
-
+        _chkLockMute.CheckedChanged += (s, e) => _chkMuteValue.Enabled = _chkLockMute.Checked;
+        mutePanel.Controls.Add(_chkLockMute, 0, 0);
         _chkMuteValue.Text = "не замьючен";
         _chkMuteValue.AutoSize = true;
-        _chkMuteValue.Location = new Point(250, y);
         _chkMuteValue.Checked = !_settings.LockMuteValue;
         _chkMuteValue.Enabled = _settings.LockMute;
-        Controls.Add(_chkMuteValue);
-        y += 32;
+        _chkMuteValue.Margin = new Padding(12, 3, 0, 0);
+        mutePanel.Controls.Add(_chkMuteValue, 1, 0);
+        table.Controls.Add(mutePanel, 0, 4);
+        table.SetColumnSpan(mutePanel, 3);
 
+        // Строка 6: автозапуск
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         _chkAutostart.Text = "Запускать вместе с Windows";
         _chkAutostart.AutoSize = true;
-        _chkAutostart.Location = new Point(15, y);
         _chkAutostart.Checked = _settings.Autostart && Autostart.IsEnabled();
-        Controls.Add(_chkAutostart);
-        y += 32;
+        _chkAutostart.Margin = new Padding(0, 6, 0, 0);
+        table.Controls.Add(_chkAutostart, 0, 5);
+        table.SetColumnSpan(_chkAutostart, 3);
 
-        var btnApply = new Button
-        {
-            Text = "Применить",
-            Location = new Point(200, y),
-            Size = new Size(110, 30)
-        };
-        btnApply.Click += (s, e) => ApplySettings();
-        Controls.Add(btnApply);
-
-        var btnClose = new Button
-        {
-            Text = "Закрыть",
-            Location = new Point(320, y),
-            Size = new Size(110, 30)
-        };
-        btnClose.Click += (s, e) => Close();
-        Controls.Add(btnClose);
-        y += 40;
-
+        // Строка 7: кнопки + статус
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var bottom = new TableLayoutPanel { ColumnCount = 3, RowCount = 1, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
+        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         _lblCurrent.Text = "";
-        _lblCurrent.Location = new Point(15, y);
         _lblCurrent.AutoSize = true;
         _lblCurrent.ForeColor = Color.DarkGreen;
-        Controls.Add(_lblCurrent);
+        _lblCurrent.Anchor = AnchorStyles.Left;
+        bottom.Controls.Add(_lblCurrent, 0, 0);
+        var btnApply = new Button { Text = "Применить", Dock = DockStyle.Fill, MinimumSize = new Size(100, 30) };
+        btnApply.Click += (s, e) => ApplySettings();
+        bottom.Controls.Add(btnApply, 1, 0);
+        var btnClose = new Button { Text = "Закрыть", Dock = DockStyle.Fill, MinimumSize = new Size(100, 30) };
+        btnClose.Click += (s, e) => Close();
+        bottom.Controls.Add(btnClose, 2, 0);
+        table.Controls.Add(bottom, 0, 6);
+        table.SetColumnSpan(bottom, 3);
+
+        Controls.Add(table);
 
         _engine.VolumeChangedApplied += OnApplied;
         _engine.VolumeChangedExternal += OnExternal;
 
+        _slider.ValueChanged += (s, e) => { if (_num.Value != _slider.Value) _num.Value = _slider.Value; };
+        _num.ValueChanged += (s, e) => { if (_slider.Value != (int)_num.Value) _slider.Value = (int)_num.Value; };
+
         LoadDevices();
+        UpdateDeviceLabel();
         FormClosed += (s, e) =>
         {
             _engine.VolumeChangedApplied -= OnApplied;
@@ -148,8 +164,27 @@ internal sealed class SettingsForm : Form
         };
     }
 
+    private void CmbDevice_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_loadingDevices) return;
+        if (_cmbDevice.SelectedItem is not DeviceItem di) return;
+        if (di.Id == _settings.DeviceId) return;
+        _settings.DeviceId = di.Id;
+        _settings.DeviceName = di.Name;
+        _engine.AttachDevice();
+        SaveAndApply();
+        UpdateDeviceLabel();
+    }
+
+    private void UpdateDeviceLabel()
+    {
+        string name = _engine.CurrentDeviceName;
+        _lblDevice.Text = "Текущее устройство: " + (string.IsNullOrEmpty(name) ? "— не найдено" : name);
+    }
+
     private void LoadDevices()
     {
+        _loadingDevices = true;
         try
         {
             var devices = MicrophoneController.ListCaptureDevices();
@@ -159,12 +194,19 @@ internal sealed class SettingsForm : Form
             _cmbDevice.Items.AddRange(items.Cast<object>().ToArray());
             int idx = items.FindIndex(d => d.Id == _settings.DeviceId);
             _cmbDevice.SelectedIndex = idx >= 0 ? idx : 0;
+            if (devices.Count == 0)
+                Logger.Log("LoadDevices: список микрофонов пуст — проверьте, включено ли устройство записи");
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Log($"LoadDevices ОШИБКА: {ex.Message}");
             _cmbDevice.Items.Clear();
             _cmbDevice.Items.Add(new DeviceItem("", "Не удалось получить список"));
             _cmbDevice.SelectedIndex = 0;
+        }
+        finally
+        {
+            _loadingDevices = false;
         }
     }
 

@@ -1,6 +1,4 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace MicVolumeGuard;
 
@@ -57,7 +55,7 @@ internal sealed class VolumeGuardEngine : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"AttachDevice failed: {ex.Message}");
+            Logger.Log($"AttachDevice ОШИБКА: {ex.GetType().Name}: {ex.Message}");
             Raise(DeviceChanged, "Ошибка подключения к микрофону");
         }
     }
@@ -76,7 +74,7 @@ internal sealed class VolumeGuardEngine : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"ApplyTarget failed: {ex.Message}");
+            Logger.Log($"ApplyTarget ОШИБКА: {ex.Message}");
         }
         finally
         {
