@@ -17,6 +17,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     public TrayApplicationContext()
     {
+        // Колбэки WASAPI приходят из чужого потока: ставим WindowsFormsSynchronizationContext
+        // заранее, чтобы VolumeGuardEngine смог маршалировать события в UI-поток.
+        WindowsFormsSynchronizationContext.InstallIfNeeded();
+
         _settings = AppSettings.Load();
         _engine = new VolumeGuardEngine(_settings);
         _engine.VolumeChangedApplied += OnVolumeApplied;
@@ -66,6 +70,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private Icon MakeIcon(int percent) => TrayIconFactory.Create(percent, _settings.LockEnabled);
 
+    private static string Truncate(string s)
+    {
+        // NotifyIcon.Text: лимит тултипа трея — 63 символа
+        s = s.Replace("\n", " ");
+        return s.Length <= 63 ? s : s[..63];
+    }
+
     private void UpdateTray(int percent, bool muted)
     {
         var old = _currentIcon;
@@ -74,7 +85,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         old?.Dispose();
         string state = _settings.LockEnabled ? $"🔒 блок: {percent}%" : $"{percent}%";
         if (muted) state += " (mute)";
-        _tray.Text = $"MicVolumeGuard — {state}\n{_engine.CurrentDeviceName}";
+        _tray.Text = Truncate($"MicVolumeGuard — {state} — {_engine.CurrentDeviceName}");
     }
 
     private void OnVolumeApplied(int percent, bool muted) => UpdateTray(percent, muted);
@@ -87,7 +98,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void OnDeviceChanged(string name)
     {
-        _tray.Text = $"MicVolumeGuard — {name}";
+        _tray.Text = Truncate($"MicVolumeGuard — {name}");
     }
 
     private void ExitApp()
