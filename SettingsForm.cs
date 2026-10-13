@@ -183,7 +183,7 @@ internal sealed class SettingsForm : Form
     {
         _settings.Save();
         _engine.UpdateSettings(_settings);
-        if (_engine.Settings.LockEnabled || true) _engine.ApplyTarget();
+        _engine.ApplyTarget(); // применить уровень сразу, даже если блокировка выключена
         _lblCurrent.Text = $"Установлено: {_settings.VolumePercent}%  (блокировка: {(_settings.LockEnabled ? "вкл" : "выкл")})";
     }
 

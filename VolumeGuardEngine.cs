@@ -82,7 +82,8 @@ internal sealed class VolumeGuardEngine : IDisposable
         {
             _applying = false;
             _lastSeenPercent = _settings.VolumePercent;
-            _lastSeenMute = _settings.LockMute ? _settings.LockMuteValue : _mic.GetMute();
+            try { _lastSeenMute = _settings.LockMute ? _settings.LockMuteValue : _mic.GetMute(); }
+            catch { /* устройство могло исчезнуть */ }
             Raise(VolumeChangedApplied, _lastSeenPercent, _lastSeenMute);
         }
     }

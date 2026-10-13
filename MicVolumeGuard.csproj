@@ -14,6 +14,7 @@
     <Description>Трей-утилита: уровень микрофона с блокировкой от изменений другими программами</Description>
     <!-- Позволяет собирать WinForms-приложение на Linux (кросс-компиляция) -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
