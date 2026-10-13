@@ -7,7 +7,7 @@ using System.Windows.Forms;
 namespace MicVolumeGuard;
 
 /// <summary>
-/// Окно настроек: выбор микрофона, уровень громкости, блокировка, автозапуск.
+/// Окно настроек: выбор микрофона, уровень громкости, блокировка, автозапуск, логирование.
 /// Вёрстка на TableLayoutPanel — контролы не перекрываются ни при каком DPI/шрифте.
 /// </summary>
 internal sealed class SettingsForm : Form
@@ -22,6 +22,8 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _chkLockMute = new();
     private readonly CheckBox _chkMuteValue = new();
     private readonly CheckBox _chkAutostart = new();
+    private readonly CheckBox _chkLog = new();
+    private readonly CheckBox _chkLogVerbose = new();
     private readonly Label _lblCurrent = new();
     private readonly Label _lblDevice = new();
     private bool _loadingDevices;
@@ -36,26 +38,25 @@ internal sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        Font = new Font("Segoe UI", 9.5f);
+        Font = new Font("Segoe UI", 9f);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(520, 330);
+        ClientSize = new Size(540, 372);
 
         // --- таблица: 3 колонки (метка | контрол | хвост), строки по содержимому ---
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 7,
+            RowCount = 9,
             Padding = new Padding(12),
-            AutoSize = true,
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
 
         // Строка 1: микрофон
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        table.Controls.Add(new Label { Text = "Микрофон:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 6, 0) }, 0, 0);
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        table.Controls.Add(new Label { Text = "Микрофон:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 5, 6, 0) }, 0, 0);
         _cmbDevice.DropDownStyle = ComboBoxStyle.DropDownList;
         _cmbDevice.Dock = DockStyle.Fill;
         _cmbDevice.SelectedIndexChanged += CmbDevice_SelectedIndexChanged;
@@ -63,20 +64,20 @@ internal sealed class SettingsForm : Form
         table.SetColumnSpan(_cmbDevice, 2);
 
         // Строка 2: текущее устройство
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         _lblDevice.Text = "Текущее устройство: —";
         _lblDevice.AutoSize = true;
         _lblDevice.ForeColor = Color.DimGray;
-        _lblDevice.Margin = new Padding(0, 6, 0, 0);
+        _lblDevice.Margin = new Padding(0, 5, 0, 0);
         table.Controls.Add(_lblDevice, 0, 1);
         table.SetColumnSpan(_lblDevice, 3);
 
         // Строка 3: громкость (слайдер + число)
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        table.Controls.Add(new Label { Text = "Громкость:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 12, 6, 0) }, 0, 2);
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        table.Controls.Add(new Label { Text = "Громкость:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 10, 6, 0) }, 0, 2);
         var volumePanel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Dock = DockStyle.Fill, Margin = new Padding(0) };
         volumePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        volumePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 75));
+        volumePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 65));
         _slider.Minimum = 0;
         _slider.Maximum = 100;
         _slider.Dock = DockStyle.Fill;
@@ -91,16 +92,16 @@ internal sealed class SettingsForm : Form
         table.SetColumnSpan(volumePanel, 2);
 
         // Строка 4: блокировка
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         _chkLock.Text = "🔒 Блокировать уровень (откатывать изменения от других программ)";
         _chkLock.AutoSize = true;
         _chkLock.Checked = _settings.LockEnabled;
-        _chkLock.Margin = new Padding(0, 6, 0, 0);
+        _chkLock.Margin = new Padding(0, 5, 0, 0);
         table.Controls.Add(_chkLock, 0, 3);
         table.SetColumnSpan(_chkLock, 3);
 
         // Строка 5: mute
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         var mutePanel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Margin = new Padding(16, 0, 0, 0), AutoSize = true };
         mutePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         mutePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -118,36 +119,70 @@ internal sealed class SettingsForm : Form
         table.Controls.Add(mutePanel, 0, 4);
         table.SetColumnSpan(mutePanel, 3);
 
-        // Строка 6: автозапуск
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        // Строка 6: автозапуск — галочка отражает ФАКТИЧЕСКОЕ состояние реестра
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         _chkAutostart.Text = "Запускать вместе с Windows";
         _chkAutostart.AutoSize = true;
-        _chkAutostart.Checked = _settings.Autostart && Autostart.IsEnabled();
-        _chkAutostart.Margin = new Padding(0, 6, 0, 0);
+        _chkAutostart.Checked = Autostart.IsEnabled(); // истина из реестра, не из конфига
+        _chkAutostart.Margin = new Padding(0, 5, 0, 0);
         table.Controls.Add(_chkAutostart, 0, 5);
         table.SetColumnSpan(_chkAutostart, 3);
 
-        // Строка 7: кнопки + статус
+        // Строка 7: логирование
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        var logPanel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 0), AutoSize = true };
+        logPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        logPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _chkLog.Text = "Вести журнал (log.txt)";
+        _chkLog.AutoSize = true;
+        _chkLog.Checked = _settings.LogEnabled;
+        _chkLog.CheckedChanged += (s, e) => _chkLogVerbose.Enabled = _chkLog.Checked;
+        logPanel.Controls.Add(_chkLog, 0, 0);
+        _chkLogVerbose.Text = "подробный";
+        _chkLogVerbose.AutoSize = true;
+        _chkLogVerbose.Checked = _settings.LogVerbose;
+        _chkLogVerbose.Enabled = _settings.LogEnabled;
+        _chkLogVerbose.Margin = new Padding(12, 3, 0, 0);
+        logPanel.Controls.Add(_chkLogVerbose, 1, 0);
+        table.Controls.Add(logPanel, 0, 6);
+        table.SetColumnSpan(logPanel, 3);
+
+        // Строка 8: кнопки (компактные) + справка
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var bottom = new TableLayoutPanel { ColumnCount = 3, RowCount = 1, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        var buttons = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            Margin = new Padding(0, 8, 0, 0),
+            WrapContents = false,
+        };
+        var btnHelp = new Button { Text = "Справка", AutoSize = true, MinimumSize = new Size(88, 27) };
+        btnHelp.Click += (s, e) =>
+        {
+            using var help = new HelpForm { Owner = this };
+            help.ShowDialog(this);
+        };
+        var btnApply = new Button { Text = "Применить", AutoSize = true, MinimumSize = new Size(88, 27) };
+        btnApply.Click += (s, e) => ApplySettings();
+        var btnClose = new Button { Text = "Закрыть", AutoSize = true, MinimumSize = new Size(88, 27) };
+        btnClose.Click += (s, e) => Close();
+        buttons.Controls.Add(btnHelp);
+        buttons.Controls.Add(btnApply);
+        buttons.Controls.Add(btnClose);
+        table.Controls.Add(buttons, 0, 7);
+        table.SetColumnSpan(buttons, 3);
+
+        // Строка 9: статус
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _lblCurrent.Text = "";
         _lblCurrent.AutoSize = true;
         _lblCurrent.ForeColor = Color.DarkGreen;
-        _lblCurrent.Anchor = AnchorStyles.Left;
-        bottom.Controls.Add(_lblCurrent, 0, 0);
-        var btnApply = new Button { Text = "Применить", Dock = DockStyle.Fill, MinimumSize = new Size(100, 30) };
-        btnApply.Click += (s, e) => ApplySettings();
-        bottom.Controls.Add(btnApply, 1, 0);
-        var btnClose = new Button { Text = "Закрыть", Dock = DockStyle.Fill, MinimumSize = new Size(100, 30) };
-        btnClose.Click += (s, e) => Close();
-        bottom.Controls.Add(btnClose, 2, 0);
-        table.Controls.Add(bottom, 0, 6);
-        table.SetColumnSpan(bottom, 3);
+        _lblCurrent.Margin = new Padding(0, 6, 0, 0);
+        table.Controls.Add(_lblCurrent, 0, 8);
+        table.SetColumnSpan(_lblCurrent, 3);
 
         Controls.Add(table);
+        AcceptButton = btnApply;
 
         _engine.VolumeChangedApplied += OnApplied;
         _engine.VolumeChangedExternal += OnExternal;
@@ -217,7 +252,10 @@ internal sealed class SettingsForm : Form
         _settings.LockMute = _chkLockMute.Checked;
         _settings.LockMuteValue = !_chkMuteValue.Checked; // чекбокс = "не замьючен"
         _settings.Autostart = _chkAutostart.Checked;
+        _settings.LogEnabled = _chkLog.Checked;
+        _settings.LogVerbose = _chkLogVerbose.Checked;
         Autostart.Set(_settings.Autostart);
+        Logger.Configure(_settings.LogEnabled, _settings.LogVerbose);
         SaveAndApply();
     }
 

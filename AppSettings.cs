@@ -36,6 +36,14 @@ public sealed class AppSettings
     [JsonProperty("watchdog_interval_ms")]
     public int WatchdogIntervalMs { get; set; } = 1500;
 
+    /// <summary>Вести файл лога (%APPDATA%\MicVolumeGuard\log.txt). По умолчанию выключен.</summary>
+    [JsonProperty("log_enabled")]
+    public bool LogEnabled { get; set; } = false;
+
+    /// <summary>Подробный лог (каждая установка громкости). Работает при LogEnabled.</summary>
+    [JsonProperty("log_verbose")]
+    public bool LogVerbose { get; set; } = false;
+
     public static AppSettings Load()
     {
         try

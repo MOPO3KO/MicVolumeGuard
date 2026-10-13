@@ -39,7 +39,9 @@ internal sealed class MicrophoneController : IDisposable
                 try
                 {
                     string id = dev.ID;
-                    string name = dev.FriendlyName;
+                    // «Микрофон (fifine  Microphone)» — двойные пробелы внутри скобок часто приходят из драйвера;
+                    // схлопываем их для аккуратного отображения
+                    string name = System.Text.RegularExpressions.Regex.Replace(dev.FriendlyName, @"\s{2,}", " ");
                     result.Add((id, name));
                     dev.Dispose();
                 }
@@ -137,7 +139,7 @@ internal sealed class MicrophoneController : IDisposable
         try
         {
             Device.AudioEndpointVolume.MasterVolumeLevelScalar = fraction;
-            Logger.Log($"SetVolume({Math.Round(fraction * 100)}%) OK");
+            Logger.Debug($"SetVolume({Math.Round(fraction * 100)}%) OK");
         }
         catch (Exception ex)
         {
@@ -151,7 +153,7 @@ internal sealed class MicrophoneController : IDisposable
         try
         {
             Device.AudioEndpointVolume.Mute = mute;
-            Logger.Log($"SetMute({mute}) OK");
+            Logger.Debug($"SetMute({mute}) OK");
         }
         catch (Exception ex)
         {

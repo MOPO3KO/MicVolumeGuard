@@ -24,6 +24,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
 
         _settings = AppSettings.Load();
+        Logger.Configure(_settings.LogEnabled, _settings.LogVerbose);
+        Logger.Log($"Запуск MicVolumeGuard (лог: {_settings.LogEnabled}, подробно: {_settings.LogVerbose})");
         _engine = new VolumeGuardEngine(_settings);
         _engine.VolumeChangedApplied += OnVolumeApplied;
         _engine.VolumeChangedExternal += OnVolumeExternal;

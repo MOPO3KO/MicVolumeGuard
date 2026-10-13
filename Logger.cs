@@ -3,14 +3,50 @@ using System.IO;
 
 namespace MicVolumeGuard;
 
-/// <summary>Простой файловый лог для диагностики: %APPDATA%\MicVolumeGuard\log.txt</summary>
+public enum LogLevel
+{
+    Off = 0,      // лог выключен
+    Normal = 1,   // события подключения/откатов (по умолчанию)
+    Verbose = 2   // всё, включая каждый SetVolume
+}
+
+/// <summary>
+/// Файловый лог для диагностики: %APPDATA%\MicVolumeGuard\log.txt.
+/// Ведение логов настраивается в настройках (LogEnabled + LogVerbose).
+/// </summary>
 internal static class Logger
 {
     private static readonly object Lock = new();
     private const long MaxBytes = 512 * 1024;
 
-    public static void Log(string message)
+    private static LogLevel _level = LogLevel.Normal;
+    public static LogLevel Level
     {
+        get => _level;
+        set
+        {
+            if (_level != value)
+            {
+                _level = value;
+                Log($"Логирование переключено: {value}");
+            }
+        }
+    }
+
+    public static void Configure(bool enabled, bool verbose)
+    {
+        Level = !enabled ? LogLevel.Off : (verbose ? LogLevel.Verbose : LogLevel.Normal);
+    }
+
+    /// <summary>Обычное сообщение (пишется при Normal и Verbose).</summary>
+    public static void Log(string message) => Write(LogLevel.Normal, message);
+
+    /// <summary>Подробное сообщение (только при Verbose, например каждый SetVolume).</summary>
+    public static void Debug(string message) => Write(LogLevel.Verbose, message);
+
+    private static void Write(LogLevel required, string message)
+    {
+        if (_level < required) return;
         try
         {
             lock (Lock)
