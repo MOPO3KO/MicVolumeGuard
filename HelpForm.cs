@@ -17,14 +17,16 @@ internal sealed class HelpForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(560, 420);
 
-        var txt = new TextBox
+        // RichTextBox: корректно отображает абзацы и переносы строк (TextBox с ReadOnly
+        // при некоторых DPI «сливает» \n), плюс WordWrap для длинных строк.
+        var txt = new RichTextBox
         {
-            Multiline = true,
             ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
+            ScrollBars = RichTextBoxScrollBars.Vertical,
             Dock = DockStyle.Fill,
             BackColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle,
+            WordWrap = true,
             Text = HelpText
         };
         txt.TabStop = false; // чтобы не выделялся курсором при открытии
@@ -69,6 +71,11 @@ internal sealed class HelpForm : Form
         Текущая иконка в трее:  синяя — блокировка включена,
         серая — выключена.
 
+        БЫСТРОЕ ПЕРЕКЛЮЧЕНИЕ БЛОКИРОВКИ
+        Правый клик по иконке в трее → пункт «Блокировка: вкл/выкл».
+        Галочка у пункта = блокировка активна. Переключение действует
+        сразу и сохраняется в настройках.
+
         УДЕРЖАНИЕ MUTE
         Дополнительно можно зафиксировать состояние «микрофон
         выключен/включён»: другие программы не смогут ни заглушить,
@@ -95,7 +102,7 @@ internal sealed class HelpForm : Form
 
         ИКОНКА ТРЕЯ
         • Левый клик — открыть настройки.
-        • Правый клик — меню: настройки / выход.
+        • Правый клик — меню: настройки / блокировка / выход.
         • Число на иконке — текущая громкость в процентах.
 
         ЧАСТЫЕ ВОПРОСЫ

@@ -40,12 +40,14 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9f);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(540, 372);
+        ClientSize = new Size(540, 320);
 
         // --- таблица: 3 колонки (метка | контрол | хвост), строки по содержимому ---
         var table = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,          // не растягивается на всю высоту — нет пустоты снизу
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 3,
             RowCount = 9,
             Padding = new Padding(12),
@@ -96,7 +98,9 @@ internal sealed class SettingsForm : Form
         _chkLock.Text = "🔒 Блокировать уровень (откатывать изменения от других программ)";
         _chkLock.AutoSize = true;
         _chkLock.Checked = _settings.LockEnabled;
-        _chkLock.Margin = new Padding(0, 5, 0, 0);
+        _chkLock.TextAlign = ContentAlignment.MiddleLeft;
+        _chkLock.CheckAlign = ContentAlignment.MiddleLeft;
+        _chkLock.Margin = new Padding(0, 4, 0, 0);
         table.Controls.Add(_chkLock, 0, 3);
         table.SetColumnSpan(_chkLock, 3);
 
@@ -108,13 +112,18 @@ internal sealed class SettingsForm : Form
         _chkLockMute.Text = "Удерживать состояние mute:";
         _chkLockMute.AutoSize = true;
         _chkLockMute.Checked = _settings.LockMute;
+        _chkLockMute.TextAlign = ContentAlignment.MiddleLeft;
+        _chkLockMute.CheckAlign = ContentAlignment.MiddleLeft;
+        _chkLockMute.Margin = new Padding(0, 4, 0, 0);
         _chkLockMute.CheckedChanged += (s, e) => _chkMuteValue.Enabled = _chkLockMute.Checked;
         mutePanel.Controls.Add(_chkLockMute, 0, 0);
         _chkMuteValue.Text = "не замьючен";
         _chkMuteValue.AutoSize = true;
         _chkMuteValue.Checked = !_settings.LockMuteValue;
         _chkMuteValue.Enabled = _settings.LockMute;
-        _chkMuteValue.Margin = new Padding(12, 3, 0, 0);
+        _chkMuteValue.TextAlign = ContentAlignment.MiddleLeft;
+        _chkMuteValue.CheckAlign = ContentAlignment.MiddleLeft;
+        _chkMuteValue.Margin = new Padding(12, 4, 0, 0);
         mutePanel.Controls.Add(_chkMuteValue, 1, 0);
         table.Controls.Add(mutePanel, 0, 4);
         table.SetColumnSpan(mutePanel, 3);
@@ -124,7 +133,9 @@ internal sealed class SettingsForm : Form
         _chkAutostart.Text = "Запускать вместе с Windows";
         _chkAutostart.AutoSize = true;
         _chkAutostart.Checked = Autostart.IsEnabled(); // истина из реестра, не из конфига
-        _chkAutostart.Margin = new Padding(0, 5, 0, 0);
+        _chkAutostart.TextAlign = ContentAlignment.MiddleLeft;
+        _chkAutostart.CheckAlign = ContentAlignment.MiddleLeft;
+        _chkAutostart.Margin = new Padding(0, 4, 0, 0);
         table.Controls.Add(_chkAutostart, 0, 5);
         table.SetColumnSpan(_chkAutostart, 3);
 
@@ -136,39 +147,50 @@ internal sealed class SettingsForm : Form
         _chkLog.Text = "Вести журнал (log.txt)";
         _chkLog.AutoSize = true;
         _chkLog.Checked = _settings.LogEnabled;
+        _chkLog.TextAlign = ContentAlignment.MiddleLeft;
+        _chkLog.CheckAlign = ContentAlignment.MiddleLeft;
+        _chkLog.Margin = new Padding(0, 4, 0, 0);
         _chkLog.CheckedChanged += (s, e) => _chkLogVerbose.Enabled = _chkLog.Checked;
         logPanel.Controls.Add(_chkLog, 0, 0);
         _chkLogVerbose.Text = "подробный";
         _chkLogVerbose.AutoSize = true;
         _chkLogVerbose.Checked = _settings.LogVerbose;
         _chkLogVerbose.Enabled = _settings.LogEnabled;
-        _chkLogVerbose.Margin = new Padding(12, 3, 0, 0);
+        _chkLogVerbose.TextAlign = ContentAlignment.MiddleLeft;
+        _chkLogVerbose.CheckAlign = ContentAlignment.MiddleLeft;
+        _chkLogVerbose.Margin = new Padding(12, 4, 0, 0);
         logPanel.Controls.Add(_chkLogVerbose, 1, 0);
         table.Controls.Add(logPanel, 0, 6);
         table.SetColumnSpan(logPanel, 3);
 
-        // Строка 8: кнопки (компактные) + справка
+        // Строка 8: кнопки — справка прижата вправо вместе с остальными, компактные
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var buttons = new FlowLayoutPanel
+        var buttons = new TableLayoutPanel
         {
-            FlowDirection = FlowDirection.LeftToRight,
+            ColumnCount = 4,
+            RowCount = 1,
             AutoSize = true,
+            Dock = DockStyle.Fill,
             Margin = new Padding(0, 8, 0, 0),
-            WrapContents = false,
         };
-        var btnHelp = new Button { Text = "Справка", AutoSize = true, MinimumSize = new Size(88, 27) };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // пружина: всё прижато вправо
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var btnHelp = new Button { Text = "Справка", AutoSize = true, MinimumSize = new Size(88, 26), Margin = new Padding(3, 0, 0, 0) };
         btnHelp.Click += (s, e) =>
         {
             using var help = new HelpForm { Owner = this };
             help.ShowDialog(this);
         };
-        var btnApply = new Button { Text = "Применить", AutoSize = true, MinimumSize = new Size(88, 27) };
+        var btnApply = new Button { Text = "Применить", AutoSize = true, MinimumSize = new Size(88, 26), Margin = new Padding(9, 0, 3, 0) };
         btnApply.Click += (s, e) => ApplySettings();
-        var btnClose = new Button { Text = "Закрыть", AutoSize = true, MinimumSize = new Size(88, 27) };
+        var btnClose = new Button { Text = "Закрыть", AutoSize = true, MinimumSize = new Size(88, 26), Margin = new Padding(3, 0, 0, 0) };
         btnClose.Click += (s, e) => Close();
-        buttons.Controls.Add(btnHelp);
-        buttons.Controls.Add(btnApply);
-        buttons.Controls.Add(btnClose);
+        buttons.Controls.Add(new Label(), 0, 0);
+        buttons.Controls.Add(btnHelp, 1, 0);
+        buttons.Controls.Add(btnApply, 2, 0);
+        buttons.Controls.Add(btnClose, 3, 0);
         table.Controls.Add(buttons, 0, 7);
         table.SetColumnSpan(buttons, 3);
 

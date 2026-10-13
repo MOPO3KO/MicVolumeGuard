@@ -40,8 +40,8 @@ internal sealed class MicrophoneController : IDisposable
                 {
                     string id = dev.ID;
                     // «Микрофон (fifine  Microphone)» — двойные пробелы внутри скобок часто приходят из драйвера;
-                    // схлопываем их для аккуратного отображения
-                    string name = System.Text.RegularExpressions.Regex.Replace(dev.FriendlyName, @"\s{2,}", " ");
+                    // схлопываем их для аккуратного отображения (общая функция NormalizeName)
+                    string name = NormalizeName(dev.FriendlyName);
                     result.Add((id, name));
                     dev.Dispose();
                 }
@@ -83,7 +83,7 @@ internal sealed class MicrophoneController : IDisposable
             }
 
             DeviceId = _device.ID;
-            FriendlyName = _device.FriendlyName;
+            FriendlyName = NormalizeName(_device.FriendlyName);
             Logger.Log($"Attach: подключено '{FriendlyName}' ({DeviceId})");
             _device.AudioEndpointVolume.OnVolumeNotification += OnEndpointVolumeNotification;
         }
@@ -96,6 +96,10 @@ internal sealed class MicrophoneController : IDisposable
             throw;
         }
     }
+
+    /// <summary>Схлопывает повторные пробелы в имени устройства (драйверы часто дают «(fifine  Microphone)»).</summary>
+    internal static string NormalizeName(string name) =>
+        System.Text.RegularExpressions.Regex.Replace(name ?? "", @"\s{2,}", " ").Trim();
 
     private void OnEndpointVolumeNotification(AudioVolumeNotificationData data)
     {

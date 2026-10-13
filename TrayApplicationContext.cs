@@ -13,7 +13,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly VolumeGuardEngine _engine;
     private AppSettings _settings;
     private SettingsForm? _settingsForm;
+    private ToolStripMenuItem? _miLock;
     private Icon? _currentIcon;
+    private int _lastTrayPercent;
+    private bool _lastTrayMute;
 
     public TrayApplicationContext()
     {
@@ -33,6 +36,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Открыть настройки...", null, (s, e) => ShowSettings());
+        // Быстрое переключение блокировки прямо из трея
+        _miLock = new ToolStripMenuItem("Блокировка: вкл") { Checked = _settings.LockEnabled };
+        _miLock.Click += (s, e) =>
+        {
+            _settings.LockEnabled = !_settings.LockEnabled;
+            _miLock.Checked = _settings.LockEnabled;
+            _miLock.Text = _settings.LockEnabled ? "Блокировка: вкл" : "Блокировка: выкл";
+            if (_settings.LockEnabled) _engine.ApplyTarget(); // сразу вернуть уровень
+            _settings.Save();
+            Logger.Log($"Блокировка переключена из трея: {_settings.LockEnabled}");
+            UpdateTray(_lastTrayPercent, _lastTrayMute); // цвет иконки зависит от блокировки
+        };
+        menu.Items.Add(_miLock);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (s, e) => ExitApp());
 
@@ -83,6 +99,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void UpdateTray(int percent, bool muted)
     {
+        _lastTrayPercent = percent;
+        _lastTrayMute = muted;
         var old = _currentIcon;
         _currentIcon = MakeIcon(percent);
         _tray.Icon = _currentIcon;
@@ -92,7 +110,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray.Text = Truncate($"MicVolumeGuard — {state} — {_engine.CurrentDeviceName}");
     }
 
-    private void OnVolumeApplied(int percent, bool muted) => UpdateTray(percent, muted);
+    private void OnVolumeApplied(int percent, bool muted)
+    {
+        SyncLockMenu();
+        UpdateTray(percent, muted);
+    }
+
+    /// <summary>Синхронизирует пункт «Блокировка» в меню трея с актуальным состоянием.</summary>
+    private void SyncLockMenu()
+    {
+        if (_miLock == null) return;
+        _miLock.Checked = _settings.LockEnabled;
+        _miLock.Text = _settings.LockEnabled ? "Блокировка: вкл" : "Блокировка: выкл";
+    }
 
     private void OnVolumeExternal(int percent, bool muted)
     {
