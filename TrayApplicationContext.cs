@@ -17,9 +17,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     public TrayApplicationContext()
     {
-        // Колбэки WASAPI приходят из чужого потока: ставим WindowsFormsSynchronizationContext
-        // заранее, чтобы VolumeGuardEngine смог маршалировать события в UI-поток.
-        WindowsFormsSynchronizationContext.InstallIfNeeded();
+        // Колбэки WASAPI приходят из чужого потока: гарантируем наличие
+        // WindowsFormsSynchronizationContext, чтобы VolumeGuardEngine маршалировал
+        // события в UI-поток (AsyncOperationManager использует текущий контекст).
+        if (SynchronizationContext.Current == null)
+            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
 
         _settings = AppSettings.Load();
         _engine = new VolumeGuardEngine(_settings);
