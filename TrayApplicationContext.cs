@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace MicVolumeGuard;
@@ -11,28 +9,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly NotifyIcon _tray;
     private readonly VolumeGuardEngine _engine;
+    private readonly Control _uiHost;      // скрытое окно: весь доступ к NotifyIcon — только из UI-потока
     private AppSettings _settings;
     private SettingsForm? _settingsForm;
     private ToolStripMenuItem? _miLock;
-    private Icon? _currentIcon;
+    private IntPtr _lastHicon = IntPtr.Zero;
     private int _lastTrayPercent;
     private bool _lastTrayMute;
 
     public TrayApplicationContext()
     {
-        // Колбэки WASAPI приходят из чужого потока: гарантируем наличие
-        // WindowsFormsSynchronizationContext, чтобы VolumeGuardEngine маршалировал
-        // события в UI-поток (AsyncOperationManager использует текущий контекст).
-        if (SynchronizationContext.Current == null)
-            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+        // Скрытый хост создаётся на UI-потоке; хэндл нужен сразу, чтобы
+        // InvokeRequired корректно работал из любых потоков (WASAPI и др.)
+        _uiHost = new Control();
+        _ = _uiHost.Handle;
 
         _settings = AppSettings.Load();
         Logger.Configure(_settings.LogEnabled, _settings.LogVerbose);
         Logger.Log($"Запуск MicVolumeGuard (лог: {_settings.LogEnabled}, подробно: {_settings.LogVerbose})");
         _engine = new VolumeGuardEngine(_settings);
-        _engine.VolumeChangedApplied += OnVolumeApplied;
-        _engine.VolumeChangedExternal += OnVolumeExternal;
-        _engine.DeviceChanged += OnDeviceChanged;
+        // Доставка событий движка — через _uiHost (см. OnUI): детерминированный
+        // BeginInvoke вместо хрупкого маршрута через SynchronizationContext
+        _engine.SetMarshaller(OnUI);
+
+        // События движка могут приходить из потоков WASAPI: каждый обработчик
+        // переносим в UI-поток через _uiHost — NotifyIcon допускает обращение
+        // только из потока, создавшего его окно (иначе обновления молча теряются).
+        _engine.VolumeChangedApplied += (p, m) => OnUI(() => OnVolumeApplied(p, m));
+        _engine.VolumeChangedExternal += (p, m) => OnUI(() => OnVolumeExternal(p, m));
+        _engine.DeviceChanged += name => OnUI(() => OnDeviceChanged(name));
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Открыть настройки...", null, (s, e) => ShowSettings());
@@ -54,11 +59,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _tray = new NotifyIcon
         {
-            Icon = MakeIcon(_settings.VolumePercent),
             Text = "MicVolumeGuard",
             ContextMenuStrip = menu,
-            Visible = true
+            Visible = false
         };
+        // Иконка выставляется до Visible — трей сразу показывает актуальный уровень
+        UpdateTray(_settings.VolumePercent, false);
+        _tray.Visible = true;
         _tray.MouseClick += OnTrayClick;
         _tray.DoubleClick += (s, e) => ShowSettings();
 
@@ -82,13 +89,49 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_settingsForm == null || _settingsForm.IsDisposed)
         {
             _settingsForm = new SettingsForm(_settings, _engine);
+            // Прямое обновление трея сразу после «Применить»/смены устройства —
+            // не дожидаясь событий движка (гарантия: иконка меняется всегда)
+            _settingsForm.SettingsApplied += OnSettingsApplied;
             _settingsForm.FormClosed += (s, e) => _settingsForm = null;
         }
         _settingsForm.Show();
         _settingsForm.Activate();
     }
 
-    private Icon MakeIcon(int percent) => TrayIconFactory.Create(percent, _settings.LockEnabled);
+    private void OnSettingsApplied()
+    {
+        OnUI(() =>
+        {
+            SyncLockMenu();
+            UpdateTray(_settings.VolumePercent, _lastTrayMute);
+        });
+    }
+
+    /// <summary>Выполняет action в UI-потоке (безопасно вызывать из любого потока).</summary>
+    private void OnUI(Action action)
+    {
+        if (_uiHost.IsDisposed) return;
+        if (_uiHost.InvokeRequired)
+        {
+            try { _uiHost.BeginInvoke(action); }
+            catch (ObjectDisposedException) { /* приложение завершается */ }
+        }
+        else action();
+    }
+
+    /// <summary>
+    /// Заменяет иконку трея. Icon.FromHandle не владеет HICON — предыдущий
+    /// хэндл уничтожаем сами (DestroyIcon), иначе GDI-хэндлы утекают и
+    /// со временем иконка перестаёт обновляться до перезапуска.
+    /// </summary>
+    private void SetTrayIcon(int percent)
+    {
+        var old = _lastHicon;
+        var icon = TrayIconFactory.Create(percent, _settings.LockEnabled);
+        _tray.Icon = icon;
+        _lastHicon = icon.Handle;
+        if (old != IntPtr.Zero) DestroyIcon(old);
+    }
 
     private static string Truncate(string s)
     {
@@ -101,10 +144,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _lastTrayPercent = percent;
         _lastTrayMute = muted;
-        var old = _currentIcon;
-        _currentIcon = MakeIcon(percent);
-        _tray.Icon = _currentIcon;
-        old?.Dispose();
+        SetTrayIcon(percent);
         string state = _settings.LockEnabled ? $"🔒 блок: {percent}%" : $"{percent}%";
         if (muted) state += " (mute)";
         _tray.Text = Truncate($"MicVolumeGuard — {state} — {_engine.CurrentDeviceName}");
@@ -139,7 +179,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _tray.Visible = false;
         _tray.Dispose();
+        if (_lastHicon != IntPtr.Zero)
+        {
+            DestroyIcon(_lastHicon);
+            _lastHicon = IntPtr.Zero;
+        }
+        _uiHost.Dispose();
         _engine.Dispose();
         Application.Exit();
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
 }

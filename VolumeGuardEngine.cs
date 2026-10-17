@@ -12,6 +12,7 @@ internal sealed class VolumeGuardEngine : IDisposable
     private readonly MicrophoneController _mic = new();
     private readonly System.Windows.Forms.Timer _watchdog;
     private readonly SynchronizationContext? _ui;
+    private Action<Action>? _marshal;   // маршалинг в UI-поток; задаётся приложением (SetMarshaller)
     private AppSettings _settings;
     private bool _applying;        // защита от эхо-цикла (своё применение -> колбэк -> применение)
     private int _lastSeenPercent = -1;
@@ -30,6 +31,9 @@ internal sealed class VolumeGuardEngine : IDisposable
         _watchdog.Tick += OnWatchdogTick;
         _mic.VolumeChanged += OnVolumeChanged;
     }
+
+    /// <summary>Задаёт способ доставки событий в UI-поток (контрол с существующим хэндлом).</summary>
+    public void SetMarshaller(Action<Action> marshal) => _marshal = marshal;
 
     public AppSettings Settings => _settings;
 
@@ -79,7 +83,10 @@ internal sealed class VolumeGuardEngine : IDisposable
         finally
         {
             _applying = false;
-            _lastSeenPercent = _settings.VolumePercent;
+            // Читаем ФАКТИЧЕСКОЕ значение обратно: если SetVolume не сработал
+            // (устройство отвалилось), трей покажет реальное состояние, а не цель
+            try { _lastSeenPercent = (int)Math.Round(_mic.GetVolume() * 100f); }
+            catch { _lastSeenPercent = Math.Clamp(_settings.VolumePercent, 0, 100); }
             try { _lastSeenMute = _settings.LockMute ? _settings.LockMuteValue : _mic.GetMute(); }
             catch { /* устройство могло исчезнуть */ }
             Raise(VolumeChangedApplied, _lastSeenPercent, _lastSeenMute);
@@ -113,15 +120,26 @@ internal sealed class VolumeGuardEngine : IDisposable
     {
         try
         {
-            if (_mic.DeviceId == "" || !_settings.LockEnabled) return;
+            if (_mic.DeviceId == "") return;
             float cur = _mic.GetVolume();
             int percent = (int)Math.Round(cur * 100f);
             bool mute = _mic.GetMute();
-            if (percent != Math.Clamp(_settings.VolumePercent, 0, 100) || (_settings.LockMute && mute != _settings.LockMuteValue))
+            bool deviates = percent != Math.Clamp(_settings.VolumePercent, 0, 100)
+                            || (_settings.LockMute && mute != _settings.LockMuteValue);
+            if (_settings.LockEnabled && deviates)
             {
                 // Кто-то изменил мимо колбэка — восстанавливаем
                 Raise(VolumeChangedExternal, percent, mute);
                 ApplyTarget();
+                return;
+            }
+            // Пульс: трей отражает фактическое состояние устройства,
+            // даже если событие колбэка где-то потерялось
+            if (percent != _lastSeenPercent || mute != _lastSeenMute)
+            {
+                _lastSeenPercent = percent;
+                _lastSeenMute = mute;
+                Raise(VolumeChangedApplied, percent, mute);
             }
         }
         catch { }
@@ -130,6 +148,7 @@ internal sealed class VolumeGuardEngine : IDisposable
     private void Raise(Action<int, bool>? evt, int a, bool b)
     {
         if (evt == null) return;
+        if (_marshal != null) { _marshal(() => evt(a, b)); return; }
         if (_ui != null) _ui.Post(_ => evt(a, b), null);
         else evt(a, b);
     }
@@ -137,6 +156,7 @@ internal sealed class VolumeGuardEngine : IDisposable
     private void Raise(Action<string>? evt, string msg)
     {
         if (evt == null) return;
+        if (_marshal != null) { _marshal(() => evt(msg)); return; }
         if (_ui != null) _ui.Post(_ => evt(msg), null);
         else evt(msg);
     }

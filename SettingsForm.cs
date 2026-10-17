@@ -27,6 +27,10 @@ internal sealed class SettingsForm : Form
     private readonly Label _lblCurrent = new();
     private readonly Label _lblDevice = new();
     private bool _loadingDevices;
+    private TableLayoutPanel _table = null!;
+
+    /// <summary>Настройки применены (кнопка «Применить» или смена устройства).</summary>
+    public event Action? SettingsApplied;
 
     public SettingsForm(AppSettings settings, VolumeGuardEngine engine)
     {
@@ -200,10 +204,19 @@ internal sealed class SettingsForm : Form
         _lblCurrent.AutoSize = true;
         _lblCurrent.ForeColor = Color.DarkGreen;
         _lblCurrent.Margin = new Padding(0, 6, 0, 0);
+        _lblCurrent.Visible = false; // пустой статус не занимает место
         table.Controls.Add(_lblCurrent, 0, 8);
         table.SetColumnSpan(_lblCurrent, 3);
 
         Controls.Add(table);
+
+        // Высота окна строго по содержимому таблицы — без пустого места под кнопками.
+        // В конструкторе расчёт на 100% DPI; после применения масштабирования
+        // пересчитываем ещё раз в Load.
+        _table = table;
+        ApplyContentHeight();
+        Load += (s, e) => ApplyContentHeight();
+
         AcceptButton = btnApply;
 
         _engine.VolumeChangedApplied += OnApplied;
@@ -219,6 +232,13 @@ internal sealed class SettingsForm : Form
             _engine.VolumeChangedApplied -= OnApplied;
             _engine.VolumeChangedExternal -= OnExternal;
         };
+    }
+
+    /// <summary>Подгоняет высоту окна под фактическую высоту таблицы.</summary>
+    private void ApplyContentHeight()
+    {
+        _table.PerformLayout();
+        ClientSize = new Size(540, _table.Height + _table.Margin.Top + _table.Margin.Bottom);
     }
 
     private void CmbDevice_SelectedIndexChanged(object? sender, EventArgs e)
@@ -286,7 +306,10 @@ internal sealed class SettingsForm : Form
         _settings.Save();
         _engine.UpdateSettings(_settings);
         _engine.ApplyTarget(); // применить уровень сразу, даже если блокировка выключена
+        _lblCurrent.Visible = true;
         _lblCurrent.Text = $"Установлено: {_settings.VolumePercent}%  (блокировка: {(_settings.LockEnabled ? "вкл" : "выкл")})";
+        ApplyContentHeight(); // строка статуса появилась — подгоняем высоту окна
+        SettingsApplied?.Invoke(); // трей обновляется сразу, не дожидаясь событий движка
     }
 
     private void OnApplied(int percent, bool muted)
@@ -294,7 +317,9 @@ internal sealed class SettingsForm : Form
         if (IsDisposed) return;
         BeginInvoke(() =>
         {
+            _lblCurrent.Visible = true;
             _lblCurrent.Text = $"Установлено: {percent}%  (mute: {(muted ? "да" : "нет")})";
+            ApplyContentHeight();
         });
     }
 
@@ -303,8 +328,10 @@ internal sealed class SettingsForm : Form
         if (IsDisposed) return;
         BeginInvoke(() =>
         {
+            _lblCurrent.Visible = true;
             _lblCurrent.ForeColor = Color.Firebrick;
             _lblCurrent.Text = $"Перехвачено внешнее изменение ({percent}%) → откат";
+            ApplyContentHeight();
         });
     }
 

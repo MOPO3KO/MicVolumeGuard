@@ -9,7 +9,7 @@
     <RootNamespace>MicVolumeGuard</RootNamespace>
     <AssemblyName>MicVolumeGuard</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Product>MicVolumeGuard</Product>
     <Description>Трей-утилита: уровень микрофона с блокировкой от изменений другими программами</Description>
     <!-- Позволяет собирать WinForms-приложение на Linux (кросс-компиляция) -->
